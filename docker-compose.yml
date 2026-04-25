@@ -21,7 +21,7 @@ services:
       context: ./frontend
       target: development
       args:
-        - REACT_APP_API_URL=http://100.65.215.48:8001
+        - REACT_APP_API_URL=http://localhost:8001
     container_name: belfast-sentinel-frontend
     ports:
       - "3000:3000"
@@ -29,7 +29,7 @@ services:
       - ./frontend:/app
       - /app/node_modules
     environment:
-      - REACT_APP_API_URL=http://100.65.215.48:8001
+      - REACT_APP_API_URL=http://localhost:8001
       - REACT_APP_MAPBOX_TOKEN=${REACT_APP_MAPBOX_TOKEN:-}
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
