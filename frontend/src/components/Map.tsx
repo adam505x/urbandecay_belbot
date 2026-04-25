@@ -33,6 +33,14 @@ interface MapProps {
   allRiskData: AppRiskData | null;
 }
 
+type OverlayMode = 'risk' | 'ndvi' | 'ndbi';
+
+const OVERLAY_LAYERS: Record<OverlayMode, string[]> = {
+  risk:  ['risk-inner-glow', 'risk-outer-glow', 'risk-fill-optimized'],
+  ndvi:  ['satellite-imagery', 'ndvi-fill'],
+  ndbi:  ['satellite-imagery', 'ndbi-fill'],
+};
+
 const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -44,6 +52,7 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
   const [zoom] = useState(11);
   const [hoveredCell, setHoveredCell] = useState<number | null>(null);
   const [layersAdded, setLayersAdded] = useState(false);
+  const [overlayMode, setOverlayMode] = useState<OverlayMode>('risk');
 
   // Initialize map with performance-optimized settings
   useEffect(() => {
@@ -94,6 +103,20 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
 
     const addRiskLayers = () => {
       if (!map.current) return;
+
+      // Real satellite imagery (Mapbox satellite tileset)
+      map.current.addSource('satellite', {
+        type: 'raster',
+        url: 'mapbox://mapbox.satellite',
+        tileSize: 256
+      });
+      map.current.addLayer({
+        id: 'satellite-imagery',
+        type: 'raster',
+        source: 'satellite',
+        layout: { visibility: 'none' },
+        paint: { 'raster-opacity': 1.0 }
+      });
 
       // Add source
       map.current.addSource('risk-grid', {
@@ -231,6 +254,50 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
         filter: ['==', 'cell_id', -1] // Initially hide all
       });
 
+      // NDVI overlay — stretched to Belfast's actual range (-0.07 → 0.33)
+      // brown = bare/derelict, green = vegetation
+      map.current.addLayer({
+        id: 'ndvi-fill',
+        type: 'fill',
+        source: 'risk-grid',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': [
+            'interpolate', ['linear'], ['get', 'ndvi_mean'],
+            -0.07, '#7f3b08',  // bare / derelict
+             0.05, '#b35806',
+             0.13, '#e08214',  // sparse urban
+             0.19, '#fdb863',
+             0.24, '#fee0b6',  // mid — typical imputed median zone
+             0.28, '#d9f0d3',
+             0.31, '#7fbf7b',  // real vegetation
+             0.33, '#1b7837'   // dense green
+          ],
+          'fill-opacity': 0.55
+        }
+      });
+
+      // NDBI overlay — Belfast range (-0.32 → -0.10), all negative (not heavily built)
+      // blue-green = open land, orange-red = dense hard surface
+      map.current.addLayer({
+        id: 'ndbi-fill',
+        type: 'fill',
+        source: 'risk-grid',
+        layout: { visibility: 'none' },
+        paint: {
+          'fill-color': [
+            'interpolate', ['linear'], ['get', 'ndbi_mean'],
+            -0.35, '#2166ac',  // very open / vegetated
+            -0.28, '#74add1',
+            -0.22, '#abd9e9',
+            -0.17, '#fee090',  // mixed urban
+            -0.12, '#f46d43',
+            -0.07, '#d73027'   // dense built-up surface
+          ],
+          'fill-opacity': 0.55
+        }
+      });
+
       setLayersAdded(true);
     };
 
@@ -247,6 +314,18 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
       source.setData(riskData);
     }
   }, [riskData, layersAdded]);
+
+  // Switch overlay when mode changes
+  useEffect(() => {
+    if (!map.current || !layersAdded) return;
+    const allLayers = Object.values(OVERLAY_LAYERS).flat();
+    const activeLayers = OVERLAY_LAYERS[overlayMode];
+    allLayers.forEach(id => {
+      if (map.current?.getLayer(id)) {
+        map.current.setLayoutProperty(id, 'visibility', activeLayers.includes(id) ? 'visible' : 'none');
+      }
+    });
+  }, [overlayMode, layersAdded]);
 
   // Setup event listeners (only once after layers are added)
   useEffect(() => {
@@ -462,7 +541,7 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
           <p>Loading Belfast urban-decay risk data...</p>
         </div>
       )}
-      
+
       {!loading && !riskData && (
         <div className="no-data-overlay">
           <div className="no-data-message">
@@ -471,7 +550,31 @@ const Map: React.FC<MapProps> = ({ riskData, loading, allRiskData }) => {
           </div>
         </div>
       )}
-      
+
+      {layersAdded && (
+        <div style={{
+          position: 'absolute', top: 12, left: 12, zIndex: 10,
+          display: 'flex', gap: 4, background: 'rgba(0,0,0,0.65)',
+          borderRadius: 8, padding: '6px 8px'
+        }}>
+          {(['risk', 'ndvi', 'ndbi'] as OverlayMode[]).map(mode => (
+            <button
+              key={mode}
+              onClick={() => setOverlayMode(mode)}
+              style={{
+                padding: '4px 12px', border: 'none', borderRadius: 5, cursor: 'pointer',
+                fontSize: 12, fontWeight: 600, letterSpacing: '0.05em',
+                background: overlayMode === mode ? '#fff' : 'transparent',
+                color: overlayMode === mode ? '#111' : '#ccc',
+                transition: 'all 0.15s'
+              }}
+            >
+              {mode === 'risk' ? 'Decay Risk' : mode === 'ndvi' ? 'NDVI Vegetation' : 'NDBI Built-up'}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div ref={mapContainer} className="map" />
     </div>
   );

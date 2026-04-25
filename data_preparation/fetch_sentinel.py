@@ -31,10 +31,13 @@ def _have_gee() -> bool:
 
 
 def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
+    import warnings
     try:
         from sentinelhub import (  # type: ignore
             CRS, BBox, DataCollection, MimeType, SHConfig, SentinelHubStatistical,
         )
+        from sentinelhub.exceptions import SHRateLimitWarning  # type: ignore
+        warnings.filterwarnings("ignore", category=SHRateLimitWarning)
     except ImportError:
         print("sentinelhub-py not installed; pip install sentinelhub", file=sys.stderr)
         sys.exit(2)
@@ -45,14 +48,23 @@ def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
     cfg = SHConfig()
     cfg.sh_client_id = os.environ["SH_CLIENT_ID"]
     cfg.sh_client_secret = os.environ["SH_CLIENT_SECRET"]
-    # Copernicus Data Space Ecosystem (CDSE) uses different endpoints than
-    # the legacy Sentinel Hub instance. Defaults below are CDSE-correct.
     cfg.sh_base_url = os.environ.get(
         "SH_BASE_URL", "https://sh.dataspace.copernicus.eu"
     )
     cfg.sh_token_url = os.environ.get(
         "SH_TOKEN_URL",
         "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+    )
+
+    # DataCollection.SENTINEL2_L2A has service_url hardcoded to the legacy
+    # services.sentinel-hub.com endpoint. Define CDSE-targeted collections so
+    # requests go to the correct CDSE host.
+    cdse_url = cfg.sh_base_url
+    CDSE_S2 = DataCollection.define_from(
+        DataCollection.SENTINEL2_L2A, "CDSE_S2L2A", service_url=cdse_url
+    )
+    CDSE_S5P = DataCollection.define_from(
+        DataCollection.SENTINEL5P, "CDSE_S5P", service_url=cdse_url
     )
 
     gdf = gpd.read_file(grid_path)
@@ -92,12 +104,22 @@ def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
     }
     """
 
-    rows = []
-    print(f"[sh] processing {len(gdf)} cells; this can take a while")
-    for _, row in gdf.iterrows():
+    def _mean_of(stats, band_idx):
+        vals = []
+        for interval in stats["data"]:
+            bands = interval["outputs"]["default"]["bands"]
+            m = bands[f"B{band_idx}"]["stats"].get("mean")
+            try:
+                m = float(m)
+            except (TypeError, ValueError):
+                continue
+            if m == m:  # filter NaN
+                vals.append(m)
+        return sum(vals) / len(vals) if vals else None
+
+    def _fetch_cell(row):
         bb = row.geometry.bounds
         bbox = BBox(bb, crs=CRS.WGS84)
-
         s2 = SentinelHubStatistical(
             aggregation=SentinelHubStatistical.aggregation(
                 evalscript=evalscript_s2,
@@ -105,7 +127,7 @@ def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
                 aggregation_interval="P1D",
                 resolution=(20, 20),
             ),
-            input_data=[SentinelHubStatistical.input_data(DataCollection.SENTINEL2_L2A)],
+            input_data=[SentinelHubStatistical.input_data(CDSE_S2)],
             bbox=bbox,
             config=cfg,
         )
@@ -116,35 +138,84 @@ def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
                 aggregation_interval="P30D",
                 resolution=(7000, 3500),
             ),
-            input_data=[SentinelHubStatistical.input_data(DataCollection.SENTINEL5P)],
+            input_data=[SentinelHubStatistical.input_data(CDSE_S5P)],
             bbox=bbox,
             config=cfg,
         )
-
         s2_data = s2.get_data()[0]
         s5p_data = s5p.get_data()[0]
+        return {
+            "cell_id": int(row.cell_id),
+            "ndvi_mean": _mean_of(s2_data, 0),
+            "ndbi_mean": _mean_of(s2_data, 1),
+            "ndwi_mean": _mean_of(s2_data, 2),
+            "no2_mean": _mean_of(s5p_data, 0),
+        }
 
-        def _mean_of(stats, band_idx):
-            vals = []
-            for interval in stats["data"]:
-                bands = interval["outputs"]["default"]["bands"]
-                m = bands[f"B{band_idx}"]["stats"].get("mean")
-                if m is not None and m == m:
-                    vals.append(m)
-            return sum(vals) / len(vals) if vals else None
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        rows.append(
-            {
-                "cell_id": int(row["cell_id"]),
-                "ndvi_mean": _mean_of(s2_data, 0),
-                "ndbi_mean": _mean_of(s2_data, 1),
-                "ndwi_mean": _mean_of(s2_data, 2),
-                "no2_mean": _mean_of(s5p_data, 0),
-            }
-        )
+    # 10 workers saturates the CDSE rate limit without wasting it
+    n_workers = 10
 
-    pd.DataFrame(rows).to_csv(out_path, index=False)
-    print(f"[sh] wrote {out_path}")
+    _first_error_logged = [False]
+
+    def _fetch_with_retry(row, max_retries: int = 4):
+        for attempt in range(max_retries):
+            try:
+                return _fetch_cell(row)
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "rate limit" in msg or "429" in msg or "too many" in msg:
+                    wait = 2 ** attempt  # 1, 2, 4, 8 s
+                    time.sleep(wait)
+                    continue
+                if not _first_error_logged[0]:
+                    print(f"[sh] cell error (cell_id={row.cell_id}): {type(exc).__name__}: {exc}", flush=True)
+                    _first_error_logged[0] = True
+                return {"cell_id": int(row.cell_id)}
+        return {"cell_id": int(row.cell_id)}
+
+    # Resume: skip cells already in the output file
+    already_done: set = set()
+    if out_path.exists():
+        try:
+            existing = pd.read_csv(out_path)
+            if len(existing.columns) > 1:  # has real data, not just cell_id
+                already_done = set(existing["cell_id"].tolist())
+                print(f"[sh] resuming: {len(already_done)} cells already done", flush=True)
+        except Exception:
+            pass
+
+    cell_rows = [r for r in gdf.itertuples() if int(r.cell_id) not in already_done]
+    total = len(gdf)
+    done = len(already_done)
+
+    print(f"[sh] processing {len(cell_rows)} cells with {n_workers} parallel workers", flush=True)
+
+    batch: list = []
+    write_header = not out_path.exists() or len(already_done) == 0
+
+    with ThreadPoolExecutor(max_workers=n_workers) as pool:
+        futures = {pool.submit(_fetch_with_retry, row): row for row in cell_rows}
+        for fut in as_completed(futures):
+            result = fut.result()
+            if len(result) > 1:  # only save rows that have actual feature data
+                batch.append(result)
+            done += 1
+            if done % 100 == 0:
+                print(f"[sh] {done}/{total} cells done", flush=True)
+            if len(batch) >= 100:
+                df_batch = pd.DataFrame(batch)
+                df_batch.to_csv(out_path, mode="a", header=write_header, index=False)
+                write_header = False
+                batch = []
+
+    # flush remaining
+    if batch:
+        pd.DataFrame(batch).to_csv(out_path, mode="a", header=write_header, index=False)
+
+    print(f"[sh] wrote {out_path}", flush=True)
 
 
 def fetch_with_gee(grid_path: Path, out_path: Path, year: int) -> None:

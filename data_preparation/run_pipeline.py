@@ -1,11 +1,11 @@
-"""End-to-end pipeline: build grid -> fetch real data (best effort) -> synth ->
-feature-engineer -> train.
+"""End-to-end pipeline: build grid → fetch real data → engineer features → train.
 
-This is the one-shot entrypoint. If the real data fetchers are missing
-credentials or hit network errors, the synthetic baseline is used so the demo
-still ends with a working model + GeoJSON in backend/.
+Required steps (abort on failure):
+  build_grid, fetch_nimdm, fetch_hpi, fetch_vacancy, feature_engineering, train_model
+
+Optional steps (skip on failure, pipeline continues):
+  fetch_crime, fetch_transport, fetch_sentinel
 """
-
 from __future__ import annotations
 
 import os
@@ -18,7 +18,6 @@ ROOT = HERE.parent
 
 
 def _load_dotenv(path: Path) -> None:
-    """Tiny .env loader — no python-dotenv dependency required."""
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -34,29 +33,52 @@ def _load_dotenv(path: Path) -> None:
 
 _load_dotenv(ROOT / ".env")
 
-STEPS = [
+# Use all 12 CPU threads for numpy/scipy/geopandas operations
+os.environ.setdefault("OMP_NUM_THREADS", "12")
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "12")
+os.environ.setdefault("MKL_NUM_THREADS", "12")
+
+REQUIRED = [
     [sys.executable, str(HERE / "build_grid.py"), "--region", "belfast", "--cell-m", "500"],
-    [sys.executable, str(HERE / "fetch_opendatani.py")],
-    [sys.executable, str(HERE / "fetch_nisra_census.py")],
-    [sys.executable, str(HERE / "fetch_house_prices.py")],
+    [sys.executable, str(HERE / "fetch_nimdm.py")],
+    [sys.executable, str(HERE / "fetch_hpi.py")],
+    [sys.executable, str(HERE / "fetch_vacancy.py")],
+]
+
+OPTIONAL = [
+    [sys.executable, str(HERE / "fetch_crime.py")],
+    [sys.executable, str(HERE / "fetch_transport.py")],
     [sys.executable, str(HERE / "fetch_sentinel.py")],
-    [sys.executable, str(HERE / "generate_synthetic.py")],
+]
+
+REQUIRED_FINAL = [
     [sys.executable, str(HERE / "feature_engineering.py")],
     [sys.executable, str(HERE / "train_model.py")],
 ]
 
 
 def main() -> None:
-    for cmd in STEPS:
+    for cmd in REQUIRED:
         print(f"\n>>> {' '.join(cmd)}")
         rc = subprocess.call(cmd)
         if rc != 0:
-            label = Path(cmd[1]).stem
-            if label.startswith("fetch_") or label == "generate_synthetic":
-                print(f"  [skip] {label} returned {rc}; pipeline continues with whatever data is available")
-                continue
-            print(f"  [fail] {label} returned {rc}; aborting")
+            print(f"  [ABORT] {Path(cmd[1]).stem} failed (rc={rc}) — required step")
             sys.exit(rc)
+
+    for cmd in OPTIONAL:
+        print(f"\n>>> {' '.join(cmd)}")
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            print(f"  [skip] {Path(cmd[1]).stem} failed (rc={rc}) — optional, continuing")
+
+    for cmd in REQUIRED_FINAL:
+        print(f"\n>>> {' '.join(cmd)}")
+        rc = subprocess.call(cmd)
+        if rc != 0:
+            print(f"  [ABORT] {Path(cmd[1]).stem} failed (rc={rc})")
+            sys.exit(rc)
+
+    print("\n[pipeline] complete.")
 
 
 if __name__ == "__main__":

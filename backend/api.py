@@ -1,8 +1,8 @@
 """Belfast / Northern Ireland Urban Decay Risk API.
 
-Loads a LightGBM classifier trained on a feature-engineered Belfast/NI grid and
-exposes endpoints that mirror the Urban Sentinel contract so the existing
-React + Mapbox frontend can talk to it without changes.
+Loads a LightGBM regressor trained on a composite decay_index and exposes
+endpoints consumed by the existing React + Mapbox frontend. Includes
+decay_2025/2030/2035/2040 forecast fields where available.
 """
 
 import json
@@ -44,62 +44,48 @@ app.add_middleware(
 # Columns that are NOT model features (identifiers / labels / display fields).
 NON_FEATURE_COLUMNS = {
     "cell_id",
+    "decay_index", "decay_decile",
+    "decay_2025", "decay_2030", "decay_2035", "decay_2040",
     "is_decayed",
     "target_decay_score",
     "dominant_decay_driver",
     "recent_dominant_decay_driver",
-    "lsoa_code",
-    "lsoa_name",
-    "ward_code",
-    "ward_name",
+    "lsoa_code", "lsoa_name",
+    "ward_code", "ward_name",
+    "SOA2001name",
 }
 
 # Human-readable descriptions for NI-specific features.
 FEATURE_DESCRIPTIONS: Dict[str, str] = {
-    # Sentinel-2 derived
-    "ndvi_mean": "Mean vegetation index (Sentinel-2) — lower values often indicate hard, neglected surfaces",
-    "ndvi_std": "Variability of vegetation across the cell",
-    "ndvi_trend": "Multi-year NDVI trend (negative = greenery loss)",
-    "ndbi_mean": "Mean built-up index (Sentinel-2)",
-    "ndbi_trend": "Trend in built-up surface — rising values can indicate sprawl or rising heat",
-    "ndwi_mean": "Mean water index (Sentinel-2)",
-    "lst_mean": "Mean land-surface temperature (Sentinel-3 / Landsat) — urban heat islands",
-    # Sentinel-5P air quality
-    "no2_mean": "Mean tropospheric NO₂ (Sentinel-5P) — traffic & combustion proxy",
-    "no2_trend": "Trend in NO₂ concentration",
-    "aerosol_index": "UV aerosol index (Sentinel-5P)",
-    # Flood / climate
-    "flood_river_pct": "% of cell within DfI river-flood envelope",
-    "flood_coastal_pct": "% of cell within DfI coastal-flood envelope",
-    "flood_surface_pct": "% of cell within DfI surface-water flood envelope",
-    "flood_climate_pct": "% of cell within DfI climate-change projected flood envelope",
-    # NISRA Census 2021 / NIMDM
-    "deprivation_decile": "NIMDM 2017 multiple-deprivation decile (1 = most deprived)",
-    "income_deprivation": "NIMDM income-deprivation domain score",
+    # NIMDM 2017 (real data, Small Area level)
+    "deprivation_score": "NIMDM 2017 overall deprivation score (1=most deprived)",
+    "income_deprivation": "NIMDM income-deprivation — % of population income-deprived",
     "employment_deprivation": "NIMDM employment-deprivation domain score",
     "health_deprivation": "NIMDM health & disability domain score",
-    "crime_score": "NIMDM crime & disorder domain score",
+    "crime_domain": "NIMDM crime & disorder domain score (Small Area level)",
     "living_environment": "NIMDM living-environment domain score",
-    "population_density": "Resident population per km² (Census 2021)",
-    "pct_rented_social": "% of households in social rented tenure (Census 2021)",
-    "pct_no_central_heating": "% of dwellings without central heating",
-    "pct_unoccupied_dwellings": "% of dwellings unoccupied at census night",
-    # House price / economy
-    "house_price_index": "NI House Price Index (latest quarter, LGD-level)",
-    "house_price_trend": "5-year house-price growth rate",
-    "transactions_per_1k": "Property transactions per 1,000 dwellings",
-    # Infrastructure / proximity
-    "dist_to_powerline_km": "Distance to nearest 33kV+ transmission line",
-    "dist_to_substation_km": "Distance to nearest grid substation",
-    "dist_to_water_km": "Distance to nearest river/coast",
-    "dist_to_centre_km": "Distance to nearest town/city centre",
-    # LiDAR / topography
-    "elev_mean": "Mean elevation (NI 2021 LiDAR DTM)",
-    "elev_std": "Terrain roughness within the cell",
-    "slope_mean": "Mean slope",
-    # Traffic
-    "traffic_congestion_idx": "TomTom congestion index (0–1)",
-    "footfall_score": "Estimated footfall score (NI Footfall index)",
+    "access_to_services": "NIMDM proximity to services domain score",
+    # House price (real data, Belfast LGD quarterly)
+    "house_price_index": "NI House Price Index — Belfast LGD (latest quarter)",
+    "house_price_standardised": "Standardised house price — Belfast LGD",
+    "house_price_trend_5yr": "5-year HPI trend slope (HPI points per year)",
+    "house_price_trend_10yr": "10-year HPI trend slope (HPI points per year)",
+    "house_price_growth_pct_5yr": "5-year house price growth % — Belfast LGD",
+    # Vacancy (real data, LPS district level)
+    "vacancy_rate": "Domestic property vacancy rate — Belfast district",
+    # Crime (real data, PSNI Belfast City)
+    "crime_rate_per_1k": "PSNI recorded crimes per 1,000 population",
+    # Transport (real data, Translink bus stops)
+    "n_stops_500m": "Active bus stops within 500m",
+    "dist_to_nearest_stop_m": "Distance to nearest active bus stop (m)",
+    "transport_access_score": "Normalised transport accessibility [0-1]",
+    # Geometry-derived
+    "dist_to_centre_km": "Distance to Belfast city centre (km)",
+    # Sentinel-2 (optional — requires Sentinel Hub credentials)
+    "ndvi_mean": "Mean NDVI (Sentinel-2) — vegetation cover",
+    "ndbi_mean": "Mean NDBI (Sentinel-2) — built-up surface index",
+    "ndwi_mean": "Mean NDWI (Sentinel-2) — water/moisture",
+    "no2_mean": "Mean tropospheric NO2 (Sentinel-5P)",
 }
 
 
@@ -216,17 +202,26 @@ def predict_risk() -> List[Dict[str, Any]]:
         out = gdf.copy()
         out["risk_score"] = scores
 
-        # Frontend expects WKT geometry strings + a few legacy field names.
+        # Frontend expects WKT geometry strings.
         out["geometry"] = out["geometry"].apply(lambda g: g.wkt if g is not None else None)
+
+        # Expose forecast columns if present in the grid GeoJSON.
+        for forecast_col in ["decay_2025", "decay_2030", "decay_2035", "decay_2040"]:
+            if forecast_col not in out.columns:
+                out[forecast_col] = None
+
+        # risk_score == decay_2025 when forecast columns exist; otherwise raw model output.
+        if "decay_2025" in gdf.columns:
+            out["risk_score"] = gdf["decay_2025"].clip(0, 1)
+
         # Legacy aliases so the existing popup/legend works without code changes.
-        if "is_decayed" in out.columns:
-            out["is_blighted"] = out["is_decayed"].astype(bool)
+        out["is_blighted"] = (out["risk_score"] >= 0.5).astype(bool)
         if "dominant_decay_driver" in out.columns:
             out["overall_most_common_blight"] = out["dominant_decay_driver"]
-        if "recent_dominant_decay_driver" in out.columns:
-            out["recent_most_common_blight"] = out["recent_dominant_decay_driver"]
-        if "target_decay_score" in out.columns:
-            out["target_blight_count"] = out["target_decay_score"]
+        else:
+            out["overall_most_common_blight"] = "urban_deprivation"
+        out["recent_most_common_blight"] = out.get("recent_dominant_decay_driver", "urban_deprivation")
+        out["target_blight_count"] = out["risk_score"]
 
         return out.to_dict(orient="records")
     except Exception as exc:
@@ -327,17 +322,23 @@ def cell_details(cell_id: int) -> Dict[str, Any]:
             except (TypeError, ValueError):
                 feature_values[col] = {"value": 0.0, "description": get_feature_description(col)}
 
+        forecast = {}
+        for col in ["decay_2025", "decay_2030", "decay_2035", "decay_2040"]:
+            v = row.get(col)
+            forecast[col] = float(v) if v is not None and str(v) != "nan" else None
+
         return {
             "cell_id": int(cell_id),
             "risk_score": risk,
             "risk_level": get_risk_level(risk),
             "coordinates": {"geometry": row.geometry.wkt if row.geometry is not None else None},
             "features": feature_values,
+            "forecast_timeline": forecast,
             "historical_data": {
-                "is_blighted": bool(row.get("is_decayed", False)),
-                "target_blight_count": float(row.get("target_decay_score", 0) or 0),
-                "overall_most_common_blight": str(row.get("dominant_decay_driver", "None")),
-                "recent_most_common_blight": str(row.get("recent_dominant_decay_driver", "None")),
+                "is_blighted": risk >= 0.5,
+                "target_blight_count": risk,
+                "overall_most_common_blight": str(row.get("dominant_decay_driver", "urban_deprivation")),
+                "recent_most_common_blight": str(row.get("recent_dominant_decay_driver", "urban_deprivation")),
                 "lsoa": str(row.get("lsoa_name", "")),
                 "ward": str(row.get("ward_name", "")),
             },
