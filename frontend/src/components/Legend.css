@@ -1,0 +1,147 @@
+:root {
+  --glass-bg: rgba(15, 23, 42, 0.95);
+  --glass-border: rgba(255, 255, 255, 0.15);
+  --glass-shadow: rgba(0, 0, 0, 0.3);
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --radius-md: 16px;
+  --radius-sm: 12px;
+  --spacing-lg: 2rem;
+  --spacing-md: 1rem;
+  --spacing-sm: 0.5rem;
+  --shadow-lg: 0 10px 30px var(--glass-shadow);
+  --legend-panel-width: 220px;
+}
+
+/* Layout wrapper: fixed to the right */
+.legend-wrapper {
+  position: fixed;
+  top: 20px;
+  left: 20px;           /* RIGHT instead of left */
+  z-index: 100;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+/* Toggle button */
+.legend-toggle {
+  all: unset;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, 
+    rgba(15, 23, 42, 0.95) 0%, 
+    rgba(30, 41, 59, 0.9) 100%);
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-right: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+/* Legend panel: appears to the right of the button */
+.legend {
+  position: absolute;
+  left: 100%;                   /* Expands right, not left! */
+  top: 0;
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  padding: var(--spacing-lg) 0;
+  background: linear-gradient(135deg, 
+    rgba(15, 23, 42, 0.98) 0%, 
+    rgba(30, 41, 59, 0.95) 100%);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition:
+    width 300ms cubic-bezier(.4,0,.2,1),
+    min-width 300ms cubic-bezier(.4,0,.2,1),
+    opacity 240ms cubic-bezier(.4,0,.2,1),
+    padding 200ms cubic-bezier(.4,0,.2,1);
+}
+
+.legend.open {
+  width: var(--legend-panel-width);
+  min-width: var(--legend-panel-width);
+  opacity: 1;
+  pointer-events: auto;
+  padding: var(--spacing-lg);
+}
+
+.legend.closed {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  padding: var(--spacing-lg) 0;
+}
+
+.legend-toggle:hover,
+.legend-toggle:focus-visible {
+  background: linear-gradient(135deg, 
+    rgba(96, 165, 250, 0.2) 0%, 
+    rgba(52, 211, 153, 0.2) 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+  outline: none;
+}
+
+
+/* The rest is unchanged... */
+.legend h3 {
+  margin: 0 0 var(--spacing-md) 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.legend-item:hover {
+  transform: translateX(3px);
+}
+
+.legend-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.legend-footer {
+  margin-top: var(--spacing-md);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+.legend-footer p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  font-style: italic;
+  color: var(--text-secondary);
+  opacity: 0.9;
+}

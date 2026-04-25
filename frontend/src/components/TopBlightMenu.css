@@ -1,0 +1,278 @@
+.top-blight-menu {
+  position: fixed;
+  right: 80px;
+  top: 20px;
+  z-index: 1000;
+  
+  background: linear-gradient(145deg, rgba(132, 195, 255, 0.35), rgba(98, 179, 255, 0.25));
+  -webkit-backdrop-filter: blur(22px);
+  backdrop-filter: blur(22px);
+  border-radius: 14px;
+  box-shadow: 0 6px 24px rgba(100, 150, 200, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  
+  width: 280px;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  animation: slideInRight 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.top-blight-menu.closed {
+  background: linear-gradient(145deg, rgba(132, 195, 255, 0.35), rgba(98, 179, 255, 0.25));
+  box-shadow: 0 4px 15px rgba(100, 150, 200, 0.15);
+}
+
+.top-blight-menu.open {
+  box-shadow: 0 10px 35px rgba(100, 150, 200, 0.25);
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.blight-header {
+  padding: 14px 18px;
+  background: rgba(26, 2, 2, 0.05);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  color: #fff;
+  border-radius: 14px;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: none;
+}
+
+.blight-header:hover {
+  transform: translateY(-2px);
+  background: rgba(1, 1, 1, 0.867);
+  box-shadow: none;
+  border: none;
+}
+
+.top-blight-menu.open .blight-header {
+  border-radius: 14px 14px 0 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.header-content {
+  flex: 1;
+  flex-direction: column;
+}
+
+.toggle-arrow {
+  font-size: 14px;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.8);
+  opacity: 0.8;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.top-blight-menu.open .toggle-arrow {
+  transform: rotate(180deg);
+}
+
+.blight-header h3 {
+  margin: 0 0 2px 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.blight-subtitle {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  opacity: 0.9;
+  font-weight: 400;
+}
+
+.blight-list {
+  padding: 18px 0;
+  max-height: 400px;
+  overflow-y: auto;
+  animation: fadeInDown 0.3s ease-out;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.blight-item {
+  display: flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background-color 0.2s ease;
+}
+
+.blight-item:last-child {
+  border-bottom: none;
+}
+
+.blight-item:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.blight-indicator {
+  margin-right: 12px;
+}
+
+.blight-rank {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.9);
+  opacity: 0.8;
+}
+
+.blight-info {
+  flex-grow: 1;
+}
+
+.blight-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  margin-bottom: 2px;
+}
+
+.blight-stats {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.blight-count {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  font-weight: 400;
+}
+
+.blight-percentage {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.12);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.blight-footer {
+  padding: 12px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 0 0 14px 14px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .top-blight-menu {
+    right: 10px;
+    width: 260px;
+    max-height: 350px;
+  }
+  
+  .blight-header {
+    padding: 12px 16px;
+  }
+  
+  .blight-header h3 {
+    font-size: 16px;
+  }
+  
+  .blight-item {
+    padding: 9px 16px;
+  }
+  
+  .blight-name {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .top-blight-menu {
+    right: 8px;
+    width: 240px;
+    max-height: 300px;
+  }
+}
+
+/* Dark mode support - enhanced for glassmorphic design */
+@media (prefers-color-scheme: dark) {
+  .top-blight-menu {
+    background: rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+  }
+  
+  .blight-header {
+    background: linear-gradient(135deg, #000000 0%, #101038 50%, #0d2f57 100%);
+  }
+  
+  .blight-item:hover {
+    background: rgba(255, 255, 255, 0.15);
+  }
+  
+  .blight-name {
+    color: #ffffff;
+  }
+  
+  .blight-count {
+    color: #e3f2fd;
+  }
+  
+  .blight-footer {
+    background: rgba(255, 255, 255, 0.08);
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+  }
+  
+  .blight-footer small {
+    color: #e3f2fd;
+  }
+}
+
+/* Scrollbar styling for webkit browsers */
+.blight-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.blight-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.blight-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 2px;
+}
+
+.blight-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+} 

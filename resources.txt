@@ -1,0 +1,27 @@
+Belfast City Council Decision Model
+
+Satellite Data
+Current funding allocation
+Weather Data (Predicted)
+This is the api for all northern ireland open source data sets from gov:
+https://admin.opendatani.gov.uk/dataset/
+
+Some notable datasets: 
+Flood Maps NI — DfI ArcGIS WMS The official government flood outlines (river, coastal, surface water, + climate change projections). 
+LIDAR — Belfast City 2006 (OpenDataNI) 
+2021 NI 3D Coastal Survey — Topographic LiDAR DTM 
+
+Urban decay predictor
+Track traffic congestion / car parks / footfall
+TomTom Traffic API
+House sales prices
+https://www.data.gov.uk/dataset/
+Census data
+https://www.nisra.gov.uk/statistics/census/census-2021
+GDP data
+
+Data Centers - Good locations
+Infrastructure, power lines, power stations, water proximity		
+https://opengridworks.com
+https://docs.carto.com/faqs/carto-for-education#how-can-i-get-a-student-account-in-carto
+Urban decay locations nearby to house people
