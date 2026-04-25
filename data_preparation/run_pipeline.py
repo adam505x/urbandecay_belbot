@@ -8,11 +8,31 @@ still ends with a working model + GeoJSON in backend/.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+ROOT = HERE.parent
+
+
+def _load_dotenv(path: Path) -> None:
+    """Tiny .env loader — no python-dotenv dependency required."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(ROOT / ".env")
 
 STEPS = [
     [sys.executable, str(HERE / "build_grid.py"), "--region", "belfast", "--cell-m", "500"],

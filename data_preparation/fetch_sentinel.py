@@ -45,6 +45,15 @@ def fetch_with_sentinel_hub(grid_path: Path, out_path: Path, year: int) -> None:
     cfg = SHConfig()
     cfg.sh_client_id = os.environ["SH_CLIENT_ID"]
     cfg.sh_client_secret = os.environ["SH_CLIENT_SECRET"]
+    # Copernicus Data Space Ecosystem (CDSE) uses different endpoints than
+    # the legacy Sentinel Hub instance. Defaults below are CDSE-correct.
+    cfg.sh_base_url = os.environ.get(
+        "SH_BASE_URL", "https://sh.dataspace.copernicus.eu"
+    )
+    cfg.sh_token_url = os.environ.get(
+        "SH_TOKEN_URL",
+        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+    )
 
     gdf = gpd.read_file(grid_path)
 
